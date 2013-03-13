@@ -1,0 +1,117 @@
+* have to write at least one procedure to compile the catalog
+
+* wrong line number in compiler error message
+
+* if procedure not found, callback is not called
+
+* timestamp parsing is not so flexible
+
+* bug? unique constraint violation on unique tuple. suspect timestamp type
+
+* support other aggregates in views.
+
+
+===============
+ Steve's notes
+===============
+
+
+Environment
+===========
+- Add ../voltdb/bin to PATH (or invoke using explicit path)
+- Add ../voltdb/voltdb/* to CLASSPATH (or add to the javac -cp command line option)
+
+
+Prerequisites
+=============
+- Need "csv-loader" branch for csvloader script and corresponding voltdb that
+  knows how to interpret quoted strings for integers parsed from CSV files.
+
+
+Create DDL file ddl.sql
+=======================
+
+CREATE TABLE traffic (
+       sensor_id   INTEGER   NOT NULL,
+       record_date TIMESTAMP NOT NULL,
+       record_time TIMESTAMP NOT NULL,
+       direction   TINYINT   NOT NULL,
+       lane        TINYINT   NOT NULL,
+       cnt         INTEGER   NOT NULL,
+);
+
+CREATE INDEX idx_traffic ON traffic (
+       sensor_id, record_date
+);
+
+CREATE VIEW v_traffic_by_sensor_date (
+       sensor_id,
+       date,
+       total,
+       cnt
+) AS
+  SELECT sensor_id,
+         record_date,
+         COUNT(*),
+         SUM(cnt)
+  FROM traffic
+  GROUP BY sensor_id, record_date;
+
+CREATE TABLE alerts (
+       sensor_id   INTEGER NOT NULL,
+       record_time TIMESTAMP NOT NULL,
+       PRIMARY KEY (
+               sensor_id, record_time
+       )
+);
+
+
+Create project file
+===================
+
+project.xml with no stored procedures:
+
+<?xml version="1.0"?>
+<project>
+  <database>
+    <schemas>
+      <schema path="ddl.sql" />
+    </schemas>
+    <partitions>
+      <partition table="traffic" column="sensor_id" />
+      <partition table="alerts" column="sensor_id" />
+    </partitions>
+  </database>
+</project>
+
+
+Create catalog (traffic.jar)
+============================
+
+voltcompiler obj project.xml traffic.jar
+
+
+Create deployment file (deployment.xml)
+=======================================
+
+<?xml version="1.0"?>
+<deployment>
+  <cluster hostcount="1" sitesperhost="2" kfactor="0" />
+</deployment>
+
+
+Start database
+==============
+
+voltdb leader localhost catalog traffic.jar deployment deployment.xml
+
+
+Insert data
+===========
+
+- Cloned the csv-loader branch, e.g. into "csv-loader" directory:
+    git clone --branch csv-loader git@github.com:VoltDB/voltdb.git csv-loader
+- Perform ant build in branch.
+- Run csvloader to insert data using generated TRAFFIC.insert stored procedure
+  from 08-data.csv.
+    ../csv-loader/bin/csvloader 08-data.csv TRAFFIC.insert

@@ -1,0 +1,168 @@
+{\rtf1\ansi\ansicpg1252\cocoartf1138\cocoasubrtf320
+{\fonttbl\f0\fswiss\fcharset0 Helvetica;}
+{\colortbl;\red255\green255\blue255;}
+{\info
+{\author Ning Shi}
+{\*\copyright Ning Shi}}\margl1440\margr1440\vieww12520\viewh14600\viewkind0
+\pard\tx720\tx1440\tx2160\tx2880\tx3600\tx4320\tx5040\tx5760\tx6480\tx7200\tx7920\tx8640\pardirnatural
+
+\f0\b\fs36 \cf0 Overview
+\b0\fs24 \
+\
+(People say a demo is worth a thousand slides. We actually did prepare 1000 slides, but were told that we wouldn't have enough time, so we made this demo)\
+\
+I will show how easy and quick it is to import raw data into Volt, and what interesting analysis you can do while the data is being imported.\
+\
+
+\b\fs36 The Data
+\b0\fs24 \
+\
+For the demo, we have a data set downloaded from New York State Department of Transportation that includes hourly traffic data from sensors across the state for the years 2008 and 2009.\
+\
+We have two CSV files (in a data subdirectory), one for each year. There are roughly 10 million rows in each file. Each row has the following information, the traffic sensor ID, the time this record was taken on an hourly basis, the direction of traffic flow, the lane it recorded, and the number of vehicles went pass that sensor in the hour. For demo purposes I massaged the data to include the date as a separate column.\
+\
+(show data/08-data.csv)\
+\
+
+\b\fs36 Minimal Catalog
+\b0\fs24 \
+\
+To get started, we need to define a schema for the database. By convention it goes in a text file with a .sql extension. I already created this file and called it ddl.sql.\
+\
+(show schema ddl.sql)\
+\
+Now that we have a schema, we need a project file. It's just a simple XML document telling Volt where to look for schemas and stored procedure files, and how tables are partitioned.\
+\
+(show project file project1.xml)\
+\
+We will start out with no stored procedures, so this is all it needs.\
+\
+We can start the compiler and compile a catalog called traffic1.jar. A catalog is a bundle of all the files that define the project, including the schema, the project file, and procedure files if there are any.\
+\
+
+\b > voltcompiler obj project1.xml traffic1.jar\
+
+\b0 \
+Notice the output of the compiler, it has created some CRUD procedures for us. This one (TRAFFIC.insert) inserts data into the traffic table as defined by the schema. We'll use it later.\
+\
+
+\b\fs36 Volt Configuration and Execution
+\b0\fs24 \
+\
+Volt is a distributed database, meaning that you can run it on multiple nodes for a single database. So we have to specify the topology, including how many nodes the database will have, as well as other deployment settings. Here is the deployment file I already created.\
+\
+(show deployment file deployment.xml)\
+\
+Now we are all set. We can start the database like this,\
+\
+
+\b > voltdb leader localhost catalog traffic1.jar deployment deployment.xml\
+
+\b0 \
+Notice that we are telling it which host is the leader and providing the catalog and deployment files as input.\
+\
+
+\b\fs36 Summary
+\b0\fs24 \
+\
+What have we done so far? We created a schema file, a project file that defines the project, and a deployment file that describes the topology. It's time to import the data.\
+\
+
+\b\fs36 Data Import
+\b0\fs24 \
+\
+We'll take advantage of a generic CSV loader we're working on. It takes a CSV file and a stored procedure name and loads the data into Volt by calling an insert procedure on each row. We'll use it in this demo.\
+\
+Despite the fact that the real-world data arrives on an hourly basis, we are actually gonna replay it as fast as possible, like data streaming from a fire hose in real-time.\
+\
+Let's start replaying the traffic data from 2008 using the auto-generated insert procedure we saw earlier.\
+\
+
+\b > csvloader data/08-data.csv TRAFFIC.insert\
+
+\b0 \
+The data is streaming into Volt now. While this fire-hose is flowing\'85\
+\
+
+\b\fs36 Ad Hoc Queries
+\b0\fs24 \
+\
+...let's do some simple queries to see what we can find out about the traffic.\
+\
+Volt has a utility program which allows you to execute SQLs and procedures from the command-line. We'll use that.\
+\
+
+\b > sqlcmd
+\b0 \
+\
+I'm curious which sensors had the heaviest traffic by day in 2008. Remember that we have a view that summarizes the traffic data by sensor and date, let's query the view to find that out\
+\
+
+\b > select * from v_traffic_by_sensor_date order by cnt desc limit 10;\
+
+\b0 \
+It's quite amazing that there were over 200,000 vehicles going pass that sensor in a single day. Interesting, sensor 30291 appeared 6 times in the top 10 list. It must be one of the main roads. See if that's true. Let's look at the sensors that had the heaviest traffic from the beginning of 2008.\
+\
+
+\b > select sensor_id, SUM(cnt) as total_cnt from v_traffic_by_sensor_date group by sensor_id order by total_cnt desc limit 10;
+\b0 \
+\
+Hmm, not quite right. Sensor 30291 is the last one in the top 10 list. On the other hand, sensor 50062 is actually twice the traffic as 30291, while it only showed up once as the last in the previous top 10 list. So let's think about it, the one showed up most in the heaviest traffic by day is only the last in the heaviest traffic by year to date list. This could mean that it was rare for sensor 30291 to have so much traffic in a day. On the other hand, sensor 50062 had a much steadier heavy traffic flow. To prove my theory, let's look at the top 10 list by average traffic.\
+\
+
+\b > select sensor_id, AVG(cnt) as avg_cnt from v_traffic_by_sensor_date group by sensor_id order by avg_cnt desc limit 10;
+\b0 \
+\
+Bingo! Sensor 50062 is high on the list while 30291 doesn't even show up. Let's go back to the heaviest traffic by day result for a moment. Notice the dates for sensor 30291 are all pretty close together. There must be some events going on near that sensor. I was curious about this yesterday so I googled it. It turned out that this sensor was pretty close to an Ikea store. Maybe Ikea had some sales event at that time.\
+\
+
+\b\fs36 Stored Procedure
+\b0\fs24 \
+\
+So we've seen that different roads can have different traffic patterns. People may want to see when traffic becomes bad for any roads we are monitoring. One way to do this is to constantly query for all the sensors that have traffic over a certain threshold. But it's tedious because you have to filter sensors seen before from the results and the results can be out of date. A better way to do this is to let the database create alerts and notify you as soon as traffic becomes bad. We can do this in Volt by writing a simple stored procedure and stream data using this new procedure instead of the generated insert procedure.\
+\
+(show procedure code)\
+\
+Besides inserting data into the traffic table, this procedure will also check if daily traffic has gone over the threshold. It will return 1 on the first time traffic has gone over the threshold, so we won't have to deal with duplicate alerts later.\
+\
+We have another project file, project2.xml, that knows about this stored procedure. We can use that project file to create a new catalog.\
+\
+(show project file project2.xml)\
+\
+First we'll compile the Java code and put the results in an "obj" subdirectory.\
+\
+
+\b > javac ./src/procedures/Insert.java -d obj
+\b0 \
+\
+Then using voltcompiler again using project2.xml as input and creating traffic2.jar as output. \
+\
+
+\b > voltcompiler obj project2.xml traffic2.jar\
+
+\b0 \
+Without restarting the database, let's update the catalog by issuing the following command in SQL command. It\
+\
+
+\b > exec @UpdateApplicationCatalog traffic2.jar deployment.xml;\
+
+\b0 \
+
+\b\fs36 Alerts
+\b0\fs24 \
+\
+Now I'll load the data from 2009 using this new procedure we added.\
+\
+
+\b > csvloader data/09-data.csv Insert\
+
+\b0 \
+Now not only do we have real time alerts, we also have a history of alerts stored in the alerts table. For example, to get the last 10 alerts, we can use the following query\
+\
+
+\b > select * from alerts order by record_time desc limit 10;\
+
+\b0 \
+So in this demo, we've seen how to create a simple project to load data into Volt. We've seen how easy it is to do interesting analysis on real time data, and how stored procedure can help us simplify tasks.\
+\
+That's all we have for the demo, if you have any questions, feel free to ask.}

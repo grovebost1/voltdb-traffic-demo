@@ -8,25 +8,25 @@ CREATE TABLE traffic (
 );
 PARTITION TABLE traffic on COLUMN sensor_id;
 
--- CREATE INDEX idx_traffic ON traffic (
---        sensor_id, record_date
--- );
--- 
--- CREATE VIEW v_traffic_by_sensor_date (
---        sensor_id,
---        date,
---        total,
---        cnt
--- ) AS
---   SELECT sensor_id,
---          record_date,
---          COUNT(*),
---          SUM(cnt)
---   FROM traffic
---   GROUP BY sensor_id, record_date;
--- 
--- 
--- -- Alerts table and an evolved Insert procedure
+CREATE INDEX idx_traffic ON traffic (
+       sensor_id, record_date
+);
+
+CREATE VIEW v_traffic_by_sensor_date (
+       sensor_id,
+       date,
+       total,
+       cnt
+) AS
+  SELECT sensor_id,
+         record_date,
+         COUNT(*),
+         SUM(cnt)
+  FROM traffic
+  GROUP BY sensor_id, record_date;
+
+
+-- Alerts table and an evolved Insert procedure
 -- CREATE TABLE alerts (
 --        sensor_id   INTEGER NOT NULL,
 --        record_time TIMESTAMP NOT NULL,

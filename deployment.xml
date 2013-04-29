@@ -1,4 +1,19 @@
 <?xml version="1.0"?>
 <deployment>
   <cluster hostcount="1" sitesperhost="2" kfactor="0" />
+  <export enabled="false">
+      <onserver exportto="file">
+          <configuration>
+              <property name="batched">false</property>
+              <property name="binaryencoding">HEX</property>
+              <property name="nonce">exportout</property>
+              <property name="outdir">.</property>
+              <property name="period">60</property>
+              <property name="skipinternals">true</property>
+              <property name="type">CSV</property>
+              <property name="with-schema">false</property>
+          </configuration>
+      </onserver>
+  </export>
 </deployment>
+

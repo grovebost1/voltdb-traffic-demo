@@ -8,7 +8,7 @@ import org.voltdb.types.TimestampType;
     partitionInfo = "traffic.sensor_id:0",
     singlePartition = true
     )
-public class Insert extends VoltProcedure {
+public class InsertAlert extends VoltProcedure {
     public final SQLStmt insertTraffic =
         new SQLStmt("INSERT INTO traffic VALUES (?, ?, ?, ?, ?, ?);");
     public final SQLStmt getTotalForDay =
